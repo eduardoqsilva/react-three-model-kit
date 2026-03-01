@@ -1,6 +1,6 @@
 {
 	"name": "react-three-model-kit",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "Biblioteca para gerenciamento de materiais PBR em modelos Three.js",
 	"type": "module",
 	"sideEffects": false,
