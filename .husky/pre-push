@@ -1,5 +1,6 @@
 #!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
 
-echo "Running release..."
-npm run build || exit 0
-npm run release || exit 0
+echo "🧹 Formatando e validando build..."
+npx @biomejs/biome format --write ./src
+npm run build || exit 1

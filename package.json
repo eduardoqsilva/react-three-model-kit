@@ -23,8 +23,14 @@
 		"build": "tsup",
 		"lint": "tsc --noEmit",
 		"release": "standard-version",
-		"prepare": "husky"
+		"prepare": "is-ci || husky"
 	},
+	"standard-version": {
+    "scripts": {
+      "prerelease": "npm run build",
+      "posttag": "git push --follow-tags origin main"
+    }
+  },
 	"keywords": [
 		"threejs",
 		"react",
