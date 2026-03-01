@@ -1,4 +1,5 @@
 #!/bin/sh
 
 echo "Running release..."
+npm run build || exit 0
 npm run release || exit 0
