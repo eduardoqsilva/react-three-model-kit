@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo "Running release..."
+npm run release || exit 0
