@@ -1,3 +1,4 @@
+import * as react_jsx_runtime from 'react/jsx-runtime';
 import React from 'react';
 import * as THREE from 'three';
 import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -36,7 +37,7 @@ type MaterialMap = {
     [key: string]: THREE.MeshStandardMaterial | undefined;
 };
 
-type ExportModelFunction = (format: 'glb' | 'usdz', createUrl?: boolean) => Promise<string | Blob | undefined>;
+type ExportModelFunction = (format: "glb" | "usdz", createUrl?: boolean) => Promise<string | Blob | undefined>;
 interface ModelContextType {
     model: ModelData | null;
     materials: MaterialMap | null;
@@ -50,7 +51,7 @@ interface ModelProviderProps {
     children: React.ReactNode;
     onMaterialsApplied?: (materials: Material[]) => void;
 }
-declare const ModelProvider: React.FC<ModelProviderProps>;
+declare function ModelProvider({ children, onMaterialsApplied, }: ModelProviderProps): react_jsx_runtime.JSX.Element;
 declare const useModelContext: () => ModelContextType;
 
 export { type ExportModelFunction, type LoadingStatus, type Material, type MaterialMap, type ModelContextType, type ModelData, ModelProvider, type ModelProviderProps, type TextureAreaParams, useModelContext };

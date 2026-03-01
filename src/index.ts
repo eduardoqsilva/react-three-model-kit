@@ -1,2 +1,2 @@
-export * from './ModelProvider'
-export * from './types'
+export * from "./ModelProvider";
+export * from "./types";
