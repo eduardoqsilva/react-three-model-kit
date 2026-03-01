@@ -22,8 +22,7 @@
 		"dev": "tsup --watch",
 		"build": "tsup",
 		"lint": "tsc --noEmit",
-		"release": "standard-version",
-		"prepare": "is-ci || husky"
+		"release": "standard-version"
 	},
 	"standard-version": {
 		"scripts": {
