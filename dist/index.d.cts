@@ -3,9 +3,15 @@ import React from 'react';
 import * as THREE from 'three';
 import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
+type TextureSlot = "map" | "normalMap" | "aoMap" | "roughnessMap" | "metalnessMap";
+type TextureMapKey = "base" | "normal" | "ao" | "roughness" | "metalness" | "orm";
+interface TilingConfig {
+    repeat?: [number, number];
+    excludes?: TextureMapKey[];
+}
 interface TextureAreaParams {
     area: string;
-    tiling?: number;
+    tiling?: TilingConfig;
     roughnessFactor?: number;
     textures?: {
         hex_color?: string;
@@ -54,4 +60,4 @@ interface ModelProviderProps {
 declare function ModelProvider({ children, onMaterialsApplied, }: ModelProviderProps): react_jsx_runtime.JSX.Element;
 declare const useModelContext: () => ModelContextType;
 
-export { type ExportModelFunction, type LoadingStatus, type Material, type MaterialMap, type ModelContextType, type ModelData, ModelProvider, type ModelProviderProps, type TextureAreaParams, useModelContext };
+export { type ExportModelFunction, type LoadingStatus, type Material, type MaterialMap, type ModelContextType, type ModelData, ModelProvider, type ModelProviderProps, type TextureAreaParams, type TextureMapKey, type TextureSlot, type TilingConfig, useModelContext };
