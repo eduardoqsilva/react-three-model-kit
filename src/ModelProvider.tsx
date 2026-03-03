@@ -234,7 +234,6 @@ export function ModelProvider({
 
 			const promises: Promise<void>[] = [];
 
-
 			// HEX COLOR (modo flat)
 			if (textures.hex_color && !textures.base) {
 				clearMap("base");

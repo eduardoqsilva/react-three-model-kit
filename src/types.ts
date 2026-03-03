@@ -2,11 +2,11 @@ import type * as THREE from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export type TextureSlot =
-  | "map"
-  | "normalMap"
-  | "aoMap"
-  | "roughnessMap"
-  | "metalnessMap";
+	| "map"
+	| "normalMap"
+	| "aoMap"
+	| "roughnessMap"
+	| "metalnessMap";
 
 export type TextureMapKey =
 	| "base"
