@@ -16,6 +16,8 @@ import type {
 	MaterialMap,
 	ModelData,
 	TextureAreaParams,
+	TextureMapKey,
+	TextureSlot,
 } from "./types";
 
 export type ExportModelFunction = (
@@ -153,45 +155,75 @@ export function ModelProvider({
 		async (materialName: string, params: TextureAreaParams): Promise<void> => {
 			if (!materials || !materials[materialName]) {
 				console.warn(
-					`[ModelProvider] Material '${materialName}' não encontrado na cena atual. Verifique o mapeamento das áreas.`,
+					`[ModelProvider] Material '${materialName}' não encontrado na cena atual.`,
 				);
 				return;
 			}
 
 			const mat = materials[materialName];
-			const { textures = {}, tiling = 1, roughnessFactor = 1 } = params;
+			const { textures = {}, tiling, roughnessFactor = 1 } = params;
 
 			if (!mat) return;
 
-			// Função auxiliar com tratamento de erro isolado para não quebrar o Promise.all
+			// CLEAR HELPER
+			const clearMap = (mapType: TextureMapKey) => {
+				const mapRef: Record<Exclude<TextureMapKey, "orm">, TextureSlot> = {
+					base: "map",
+					normal: "normalMap",
+					ao: "aoMap",
+					roughness: "roughnessMap",
+					metalness: "metalnessMap",
+				};
+
+				if (mapType === "orm") return;
+
+				const key = mapRef[mapType];
+				const existingMap = mat[key];
+
+				if (existingMap) {
+					mat[key] = null;
+					existingMap.dispose();
+					mat.needsUpdate = true;
+				}
+			};
+
+			// LOAD HELPER
 			const loadAndApply = (
 				url: string,
 				applyFn: (tex: THREE.Texture) => void,
-				disableTiling: boolean | undefined = false,
+				mapType: TextureMapKey,
 			) => {
 				return new Promise<void>((resolve) => {
 					textureLoader.load(
 						url,
 						(texture) => {
 							texture.userData.originalUrl = url;
-
 							texture.flipY = false;
 
-							if (tiling > 0 && !disableTiling) {
+							// TILING CONFIG
+							const repeat = tiling?.repeat ?? [1, 1];
+							const excludes = tiling?.excludes ?? [];
+
+							const shouldTile =
+								repeat &&
+								repeat[0] > 0 &&
+								repeat[1] > 0 &&
+								!excludes.includes(mapType);
+
+							if (shouldTile) {
 								texture.wrapS = THREE.RepeatWrapping;
 								texture.wrapT = THREE.RepeatWrapping;
-								texture.repeat.set(tiling, tiling);
+								texture.repeat.set(repeat[0], repeat[1]);
 							}
 
 							applyFn(texture);
-
 							mat.needsUpdate = true;
 							resolve();
 						},
 						undefined,
 						(error) => {
 							console.error(
-								`[ModelProvider] Erro ao carregar a textura: ${url}. O material continuará com a textura anterior.`,
+								`[ModelProvider] Erro ao carregar textura: ${url}`,
 								error,
 							);
 							resolve();
@@ -202,87 +234,131 @@ export function ModelProvider({
 
 			const promises: Promise<void>[] = [];
 
-			// hex color
+
+			// HEX COLOR (modo flat)
 			if (textures.hex_color && !textures.base) {
+				clearMap("base");
+
 				const targetColor = textures.hex_color.replace("#", "");
 				if (mat.color.getHexString() !== targetColor) {
 					mat.color.set(textures.hex_color);
-					if (mat.map) {
-						mat.map.dispose();
-						mat.map = null;
-					}
 					mat.needsUpdate = true;
 				}
+
 				return;
 			}
 
-			// Texture Base / Albedo
-			if (textures.base && mat.map?.userData?.originalUrl !== textures.base) {
-				promises.push(
-					loadAndApply(textures.base, (tex) => {
-						tex.colorSpace = THREE.SRGBColorSpace;
-						if (mat.map) mat.map.dispose();
-						mat.color.set("#fff");
-						mat.map = tex;
-					}),
-				);
+			// BASE
+			if (textures.base) {
+				if (mat.map?.userData?.originalUrl !== textures.base) {
+					promises.push(
+						loadAndApply(
+							textures.base,
+							(tex) => {
+								tex.colorSpace = THREE.SRGBColorSpace;
+								clearMap("base");
+								mat.color.set("#fff");
+								mat.map = tex;
+							},
+							"base",
+						),
+					);
+				}
+			} else {
+				clearMap("base");
 			}
 
-			// Normal Map
-			if (
-				textures.normal &&
-				mat.normalMap?.userData?.originalUrl !== textures.normal
-			) {
-				promises.push(
-					loadAndApply(textures.normal, (tex) => {
-						if (mat.normalMap && mat.normalMap !== tex) {
-							mat.normalMap.dispose();
-						}
-						mat.normalMap = tex;
-					}),
-				);
+			// NORMAL
+			if (textures.normal) {
+				if (mat.normalMap?.userData?.originalUrl !== textures.normal) {
+					promises.push(
+						loadAndApply(
+							textures.normal,
+							(tex) => {
+								clearMap("normal");
+								mat.normalMap = tex;
+							},
+							"normal",
+						),
+					);
+				}
+			} else {
+				clearMap("normal");
 			}
-			// ORM (Occlusion, Roughness, Metallic)
+
+			// ORM
 			if (textures.orm) {
 				if (typeof textures.orm === "string") {
 					promises.push(
-						loadAndApply(textures.orm, (tex) => {
-							if (mat.aoMap) mat.aoMap.dispose();
-							if (mat.roughnessMap) mat.roughnessMap.dispose();
-							if (mat.metalnessMap) mat.metalnessMap.dispose();
-							mat.aoMap = mat.roughnessMap = mat.metalnessMap = tex;
-							mat.roughness = roughnessFactor;
-						}),
+						loadAndApply(
+							textures.orm,
+							(tex) => {
+								clearMap("ao");
+								clearMap("roughness");
+								clearMap("metalness");
+
+								mat.aoMap = mat.roughnessMap = mat.metalnessMap = tex;
+								mat.roughness = roughnessFactor;
+							},
+							"orm",
+						),
 					);
 				} else {
 					const orm = textures.orm;
-					if (orm.ao)
+
+					// AO
+					if (orm.ao) {
 						promises.push(
 							loadAndApply(
 								orm.ao,
 								(tex) => {
-									if (mat.aoMap) mat.aoMap.dispose();
+									clearMap("ao");
 									mat.aoMap = tex;
 								},
-								true,
+								"ao",
 							),
 						);
-					if (orm.roughness)
+					} else {
+						clearMap("ao");
+					}
+
+					// Roughness
+					if (orm.roughness) {
 						promises.push(
-							loadAndApply(orm.roughness, (tex) => {
-								if (mat.roughnessMap) mat.roughnessMap.dispose();
-								mat.roughnessMap = tex;
-								mat.roughness = roughnessFactor;
-							}),
+							loadAndApply(
+								orm.roughness,
+								(tex) => {
+									clearMap("roughness");
+									mat.roughnessMap = tex;
+									mat.roughness = roughnessFactor;
+								},
+								"roughness",
+							),
 						);
-					if (orm.metalness)
+					} else {
+						clearMap("roughness");
+					}
+
+					// Metalness
+					if (orm.metalness) {
 						promises.push(
-							loadAndApply(orm.metalness, (tex) => {
-								if (mat.metalnessMap) mat.metalnessMap.dispose();
-								mat.metalnessMap = tex;
-							}),
+							loadAndApply(
+								orm.metalness,
+								(tex) => {
+									clearMap("metalness");
+									mat.metalnessMap = tex;
+								},
+								"metalness",
+							),
 						);
+					} else {
+						clearMap("metalness");
+					}
 				}
+			} else {
+				clearMap("ao");
+				clearMap("roughness");
+				clearMap("metalness");
 			}
 
 			await Promise.all(promises);
