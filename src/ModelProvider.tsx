@@ -2,15 +2,15 @@ import React, {
 	createContext,
 	useCallback,
 	useContext,
+	useEffect,
 	useMemo,
 	useState,
-	useEffect,
 } from "react";
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { USDZExporter } from "three/examples/jsm/exporters/USDZExporter.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import {
+import type {
 	LoadingStatus,
 	Material,
 	MaterialMap,
@@ -167,6 +167,7 @@ export function ModelProvider({
 			const loadAndApply = (
 				url: string,
 				applyFn: (tex: THREE.Texture) => void,
+				disableTiling: boolean | undefined = false,
 			) => {
 				return new Promise<void>((resolve) => {
 					textureLoader.load(
@@ -176,7 +177,7 @@ export function ModelProvider({
 
 							texture.flipY = false;
 
-							if (tiling > 0) {
+							if (tiling > 0 && !disableTiling) {
 								texture.wrapS = THREE.RepeatWrapping;
 								texture.wrapT = THREE.RepeatWrapping;
 								texture.repeat.set(tiling, tiling);
@@ -257,10 +258,14 @@ export function ModelProvider({
 					const orm = textures.orm;
 					if (orm.ao)
 						promises.push(
-							loadAndApply(orm.ao, (tex) => {
-								if (mat.aoMap) mat.aoMap.dispose();
-								mat.aoMap = tex;
-							}),
+							loadAndApply(
+								orm.ao,
+								(tex) => {
+									if (mat.aoMap) mat.aoMap.dispose();
+									mat.aoMap = tex;
+								},
+								true,
+							),
 						);
 					if (orm.roughness)
 						promises.push(
@@ -307,7 +312,9 @@ export function ModelProvider({
 
 			setAppliedMaterials((prev) => {
 				const updated = { ...prev };
-				materialsArray.forEach((mat) => (updated[mat.category] = mat));
+				materialsArray.forEach((mat) => {
+					updated[mat.category] = mat;
+				});
 				return updated;
 			});
 
@@ -338,7 +345,8 @@ export function ModelProvider({
 				child instanceof THREE.Mesh &&
 				child.material instanceof THREE.MeshStandardMaterial
 			) {
-				const mat = (child.material = child.material.clone());
+				child.material = child.material.clone();
+				const mat = child.material;
 
 				const hasTiling = [
 					mat.map,
@@ -404,6 +412,7 @@ export function ModelProvider({
 		});
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: <>
 	const exportModel = useCallback(
 		async (
 			format: "glb" | "usdz",

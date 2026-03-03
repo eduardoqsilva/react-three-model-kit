@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import type * as THREE from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export interface TextureAreaParams {

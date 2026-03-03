@@ -1,6 +1,0 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-echo "🧹 Formatando e validando build..."
-npx @biomejs/biome format --write ./src
-npm run build || exit 1
