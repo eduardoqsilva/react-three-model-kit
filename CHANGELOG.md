@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.2.6...v1.3.0) (2026-03-03)
+
+
+### Features
+
+* **material:** add configurable tiling system and automatic texture cleanup ([6888f89](https://github.com/eduardoqsilva/react-three-model-kit/commit/6888f89bf5b6a49a2845465a8ac846964b329f88))
+
 ### [1.2.6](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.2.5...v1.2.6) (2026-03-03)
 
 
