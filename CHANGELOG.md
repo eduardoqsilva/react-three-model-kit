@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.6](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.2.5...v1.2.6) (2026-03-03)
+
+
+### Bug Fixes
+
+* tiling error in ao with not tiling ao ([ca428c6](https://github.com/eduardoqsilva/react-three-model-kit/commit/ca428c676003c57960728034cef233b21f9fe9e6))
+
 ### [1.2.5](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.2.4...v1.2.5) (2026-03-01)
 
 ### [1.2.3](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.2.2...v1.2.3) (2026-03-01)
