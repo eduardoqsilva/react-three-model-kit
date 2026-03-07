@@ -35,7 +35,6 @@ export interface TextureAreaParams {
 
 export interface Material {
 	id: string;
-	category: string;
 	areas: TextureAreaParams[];
 }
 

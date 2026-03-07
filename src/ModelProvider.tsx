@@ -28,7 +28,6 @@ export type ExportModelFunction = (
 export interface ModelContextType {
 	model: ModelData | null;
 	materials: MaterialMap | null;
-	appliedMaterials: Record<string, Material>;
 	loadingStatus: LoadingStatus;
 	loadModel: (url: string) => void;
 	applyMaterial: (material: Material[] | Material) => Promise<void>;
@@ -49,9 +48,6 @@ export function ModelProvider({
 }: ModelProviderProps) {
 	const [modelData, setModelData] = useState<ModelData | null>(null);
 	const [materials, setMaterials] = useState<MaterialMap | null>(null);
-	const [appliedMaterials, setAppliedMaterials] = useState<
-		Record<string, Material>
-	>({});
 	const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({
 		isLoading: false,
 		steps: 0,
@@ -126,7 +122,6 @@ export function ModelProvider({
 					});
 
 					setMaterials(extractedMaterials);
-					setAppliedMaterials({});
 					setLoadingStatus((prev) => ({
 						...prev,
 						isLoading: false,
@@ -385,14 +380,6 @@ export function ModelProvider({
 				currentStep: 0,
 			}));
 
-			setAppliedMaterials((prev) => {
-				const updated = { ...prev };
-				materialsArray.forEach((mat) => {
-					updated[mat.category] = mat;
-				});
-				return updated;
-			});
-
 			if (onMaterialsApplied) onMaterialsApplied(materialsArray);
 
 			for (const mat of materialsArray) {
@@ -550,7 +537,6 @@ export function ModelProvider({
 				loadModel,
 				exportModel,
 				loadingStatus,
-				appliedMaterials,
 			}}
 		>
 			{children}
