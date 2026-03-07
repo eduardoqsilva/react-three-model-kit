@@ -26,7 +26,6 @@ interface TextureAreaParams {
 }
 interface Material {
     id: string;
-    category: string;
     areas: TextureAreaParams[];
 }
 interface ModelData extends GLTF {
@@ -47,7 +46,6 @@ type ExportModelFunction = (format: "glb" | "usdz", createUrl?: boolean) => Prom
 interface ModelContextType {
     model: ModelData | null;
     materials: MaterialMap | null;
-    appliedMaterials: Record<string, Material>;
     loadingStatus: LoadingStatus;
     loadModel: (url: string) => void;
     applyMaterial: (material: Material[] | Material) => Promise<void>;
