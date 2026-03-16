@@ -15,7 +15,6 @@ import type {
 	Material,
 	MaterialMap,
 	ModelData,
-	TextureAreaParams,
 	TextureMapKey,
 	TextureSlot,
 } from "./types";
@@ -29,17 +28,22 @@ export interface ModelContextType {
 	model: ModelData | null;
 	materials: MaterialMap | null;
 	loadingStatus: LoadingStatus;
-	loadModel: (url: string) => void;
+	/** @param url - URL do arquivo GLB a ser carregado. */
+	/** @param initMaterials - Material ou lista de materiais aplicados imediatamente após o carregamento, dentro do mesmo fluxo de loading. */
+	loadModel: (url: string, initMaterials?: Material | Material[]) => void;
+	/** @param material - Material ou lista de materiais a aplicar na cena atual. */
 	applyMaterial: (material: Material[] | Material) => Promise<void>;
+	/** @param format - Formato de exportação: `"glb"` ou `"usdz"`. */
+	/** @param createUrl - Quando `true`, retorna uma object URL em vez de um Blob. */
 	exportModel: ExportModelFunction;
 }
 
 export interface ModelProviderProps {
 	children: React.ReactNode;
+	/** Chamado sempre que materiais são aplicados, recebendo a lista processada. */
 	onMaterialsApplied?: (materials: Material[]) => void;
 }
 
-// CONTEXT AND PROVIDER
 const ModelContext = createContext<ModelContextType | null>(null);
 
 export function ModelProvider({
@@ -48,6 +52,7 @@ export function ModelProvider({
 }: ModelProviderProps) {
 	const [modelData, setModelData] = useState<ModelData | null>(null);
 	const [materials, setMaterials] = useState<MaterialMap | null>(null);
+
 	const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({
 		isLoading: false,
 		steps: 0,
@@ -77,7 +82,6 @@ export function ModelProvider({
 				}));
 			},
 			(url) => {
-				// Log de erro
 				console.error(
 					`[ModelProvider] Falha crítica no LoadingManager ao baixar o recurso: ${url}`,
 				);
@@ -97,11 +101,288 @@ export function ModelProvider({
 		};
 	}, []);
 
+	const countTextureSteps = useCallback((materialsArray: Material[]): number => {
+		let count = 0;
+		for (const mat of materialsArray) {
+			for (const area of mat.areas) {
+				const { textures = {} } = area;
+				if (textures.base || textures.hex_color) count++;
+				if (textures.normal) count++;
+				if (textures.orm) {
+					if (typeof textures.orm === "string") {
+						count++;
+					} else {
+						if (textures.orm.ao) count++;
+						if (textures.orm.roughness) count++;
+						if (textures.orm.metalness) count++;
+					}
+				}
+			}
+		}
+		return count;
+	}, []);
+
+	/**
+	 * Aplica materiais na cena e gerencia o loading state.
+	 * Não exposta no contexto — uso interno via `applyMaterial` e `loadModel`.
+	 *
+	 * @param materialsArray - Lista de materiais a aplicar.
+	 * @param stepOffset - Step inicial do loading; quando > 0, o loading não é reiniciado.
+	 */
+	const runApplyMaterial = useCallback(
+		async (materialsArray: Material[], stepOffset: number): Promise<void> => {
+			if (!materials) return;
+
+			const textureSteps = countTextureSteps(materialsArray);
+			const totalSteps = stepOffset + textureSteps;
+			let currentStep = stepOffset;
+
+			if (stepOffset === 0) {
+				setLoadingStatus((prev) => ({
+					...prev,
+					isLoading: true,
+					steps: totalSteps,
+					currentStep,
+				}));
+			}
+
+			if (onMaterialsApplied) onMaterialsApplied(materialsArray);
+
+			for (const mat of materialsArray) {
+				for (const area of mat.areas) {
+					const threeMat = materials[area.area] as THREE.MeshStandardMaterial;
+
+					if (!threeMat) {
+						console.warn(
+							`[ModelProvider] Material '${area.area}' não encontrado na cena atual.`,
+						);
+						continue;
+					}
+
+					const { textures = {}, tiling, roughnessFactor = 1 } = area;
+
+					const clearMap = (mapType: TextureMapKey) => {
+						const mapRef: Record<Exclude<TextureMapKey, "orm">, TextureSlot> = {
+							base: "map",
+							normal: "normalMap",
+							ao: "aoMap",
+							roughness: "roughnessMap",
+							metalness: "metalnessMap",
+						};
+						if (mapType === "orm") return;
+						const key = mapRef[mapType];
+						const existingMap = threeMat[key];
+						if (existingMap) {
+							threeMat[key] = null;
+							existingMap.dispose();
+							threeMat.needsUpdate = true;
+						}
+					};
+
+					const loadAndApply = (
+						url: string,
+						applyFn: (tex: THREE.Texture) => void,
+						mapType: TextureMapKey,
+					) =>
+						new Promise<void>((resolve) => {
+							textureLoader.load(
+								url,
+								(texture) => {
+									texture.userData.originalUrl = url;
+									texture.flipY = false;
+
+									const repeat = tiling?.repeat ?? [1, 1];
+									const excludes = tiling?.excludes ?? [];
+									const shouldTile =
+										repeat[0] > 0 &&
+										repeat[1] > 0 &&
+										!excludes.includes(mapType);
+
+									if (shouldTile) {
+										texture.wrapS = THREE.RepeatWrapping;
+										texture.wrapT = THREE.RepeatWrapping;
+										texture.repeat.set(repeat[0], repeat[1]);
+									}
+
+									applyFn(texture);
+									threeMat.needsUpdate = true;
+									resolve();
+								},
+								undefined,
+								(error) => {
+									console.error(
+										`[ModelProvider] Erro ao carregar textura: ${url}`,
+										error,
+									);
+									resolve();
+								},
+							);
+						});
+
+					const promises: Promise<void>[] = [];
+
+					if (textures.hex_color && !textures.base) {
+						// cor plana: limpa o mapa base e aplica diretamente
+						clearMap("base");
+						const targetColor = textures.hex_color.replace("#", "");
+						if (threeMat.color.getHexString() !== targetColor) {
+							threeMat.color.set(textures.hex_color);
+							threeMat.needsUpdate = true;
+						}
+					} else {
+						if (textures.base) {
+							if (threeMat.map?.userData?.originalUrl !== textures.base) {
+								promises.push(
+									loadAndApply(
+										textures.base,
+										(tex) => {
+											tex.colorSpace = THREE.SRGBColorSpace;
+											clearMap("base");
+											threeMat.color.set("#fff");
+											threeMat.map = tex;
+										},
+										"base",
+									),
+								);
+							}
+						} else {
+							clearMap("base");
+						}
+
+						if (textures.normal) {
+							if (threeMat.normalMap?.userData?.originalUrl !== textures.normal) {
+								promises.push(
+									loadAndApply(
+										textures.normal,
+										(tex) => {
+											clearMap("normal");
+											threeMat.normalMap = tex;
+										},
+										"normal",
+									),
+								);
+							}
+						} else {
+							clearMap("normal");
+						}
+
+						if (textures.orm) {
+							if (typeof textures.orm === "string") {
+								// ORM combinado em uma única textura
+								promises.push(
+									loadAndApply(
+										textures.orm,
+										(tex) => {
+											clearMap("ao");
+											clearMap("roughness");
+											clearMap("metalness");
+											threeMat.aoMap = threeMat.roughnessMap = threeMat.metalnessMap = tex;
+											threeMat.roughness = roughnessFactor;
+										},
+										"orm",
+									),
+								);
+							} else {
+								const orm = textures.orm;
+
+								if (orm.ao) {
+									promises.push(
+										loadAndApply(
+											orm.ao,
+											(tex) => {
+												clearMap("ao");
+												threeMat.aoMap = tex;
+											},
+											"ao",
+										),
+									);
+								} else {
+									clearMap("ao");
+								}
+
+								if (orm.roughness) {
+									promises.push(
+										loadAndApply(
+											orm.roughness,
+											(tex) => {
+												clearMap("roughness");
+												threeMat.roughnessMap = tex;
+												threeMat.roughness = roughnessFactor;
+											},
+											"roughness",
+										),
+									);
+								} else {
+									clearMap("roughness");
+								}
+
+								if (orm.metalness) {
+									promises.push(
+										loadAndApply(
+											orm.metalness,
+											(tex) => {
+												clearMap("metalness");
+												threeMat.metalnessMap = tex;
+											},
+											"metalness",
+										),
+									);
+								} else {
+									clearMap("metalness");
+								}
+							}
+						} else {
+							clearMap("ao");
+							clearMap("roughness");
+							clearMap("metalness");
+						}
+					}
+
+					await Promise.all(promises);
+					currentStep++;
+					setLoadingStatus((prev) => ({ ...prev, currentStep }));
+				}
+			}
+
+			setLoadingStatus((prev) => ({
+				...prev,
+				isLoading: false,
+				currentStep: totalSteps,
+				progress: 100,
+			}));
+		},
+		[materials, textureLoader, countTextureSteps, onMaterialsApplied],
+	);
+
+	const applyMaterial = useCallback(
+		(materialConfig: Material | Material[]): Promise<void> => {
+			const arr = Array.isArray(materialConfig) ? materialConfig : [materialConfig];
+			return runApplyMaterial(arr, 0);
+		},
+		[runApplyMaterial],
+	);
+
+	/**
+	 * Carrega um modelo GLB e, opcionalmente, aplica materiais iniciais
+	 * dentro do mesmo fluxo de loading sem interrupção.
+	 *
+	 * @param url - URL do arquivo GLB.
+	 * @param initMaterials - Material ou lista de materiais a aplicar após o carregamento.
+	 */
 	const loadModel = useCallback(
-		(url: string) => {
+		(url: string, initMaterials?: Material | Material[]) => {
+			const initArray = initMaterials
+				? Array.isArray(initMaterials)
+					? initMaterials
+					: [initMaterials]
+				: null;
+
+			// pré-calcula o total para que o progresso já conheça o fim
+			const totalSteps = 1 + (initArray ? countTextureSteps(initArray) : 0);
+
 			setLoadingStatus({
 				isLoading: true,
-				steps: 1,
+				steps: totalSteps,
 				currentStep: 0,
 				progress: 0,
 				currentSrc: url,
@@ -111,8 +392,6 @@ export function ModelProvider({
 			loader.load(
 				url,
 				(loadedModel) => {
-					setModelData(loadedModel);
-
 					const extractedMaterials: MaterialMap = {};
 					loadedModel.scene.traverse((child) => {
 						if (child instanceof THREE.Mesh && child.material) {
@@ -121,16 +400,23 @@ export function ModelProvider({
 						}
 					});
 
+					setModelData(loadedModel);
 					setMaterials(extractedMaterials);
-					setLoadingStatus((prev) => ({
-						...prev,
-						isLoading: false,
-						currentStep: 1,
-					}));
+					setLoadingStatus((prev) => ({ ...prev, currentStep: 1 }));
+
+					if (initArray) {
+						// continua o loading a partir do step 1 (GLB já contado)
+						runApplyMaterial(initArray, 1);
+					} else {
+						setLoadingStatus((prev) => ({
+							...prev,
+							isLoading: false,
+							progress: 100,
+						}));
+					}
 				},
 				undefined,
 				(error) => {
-					// Log de erro
 					console.error(
 						`[ModelProvider] Erro ao analisar ou carregar o arquivo glTF/GLB no caminho: ${url}`,
 						error,
@@ -143,259 +429,9 @@ export function ModelProvider({
 				},
 			);
 		},
-		[loadingManager],
+		[loadingManager, countTextureSteps, runApplyMaterial],
 	);
 
-	const updateCombinedTexture = useCallback(
-		async (materialName: string, params: TextureAreaParams): Promise<void> => {
-			if (!materials || !materials[materialName]) {
-				console.warn(
-					`[ModelProvider] Material '${materialName}' não encontrado na cena atual.`,
-				);
-				return;
-			}
-
-			const mat = materials[materialName];
-			const { textures = {}, tiling, roughnessFactor = 1 } = params;
-
-			if (!mat) return;
-
-			// CLEAR HELPER
-			const clearMap = (mapType: TextureMapKey) => {
-				const mapRef: Record<Exclude<TextureMapKey, "orm">, TextureSlot> = {
-					base: "map",
-					normal: "normalMap",
-					ao: "aoMap",
-					roughness: "roughnessMap",
-					metalness: "metalnessMap",
-				};
-
-				if (mapType === "orm") return;
-
-				const key = mapRef[mapType];
-				const existingMap = mat[key];
-
-				if (existingMap) {
-					mat[key] = null;
-					existingMap.dispose();
-					mat.needsUpdate = true;
-				}
-			};
-
-			// LOAD HELPER
-			const loadAndApply = (
-				url: string,
-				applyFn: (tex: THREE.Texture) => void,
-				mapType: TextureMapKey,
-			) => {
-				return new Promise<void>((resolve) => {
-					textureLoader.load(
-						url,
-						(texture) => {
-							texture.userData.originalUrl = url;
-							texture.flipY = false;
-
-							// TILING CONFIG
-							const repeat = tiling?.repeat ?? [1, 1];
-							const excludes = tiling?.excludes ?? [];
-
-							const shouldTile =
-								repeat &&
-								repeat[0] > 0 &&
-								repeat[1] > 0 &&
-								!excludes.includes(mapType);
-
-							if (shouldTile) {
-								texture.wrapS = THREE.RepeatWrapping;
-								texture.wrapT = THREE.RepeatWrapping;
-								texture.repeat.set(repeat[0], repeat[1]);
-							}
-
-							applyFn(texture);
-							mat.needsUpdate = true;
-							resolve();
-						},
-						undefined,
-						(error) => {
-							console.error(
-								`[ModelProvider] Erro ao carregar textura: ${url}`,
-								error,
-							);
-							resolve();
-						},
-					);
-				});
-			};
-
-			const promises: Promise<void>[] = [];
-
-			// HEX COLOR (modo flat)
-			if (textures.hex_color && !textures.base) {
-				clearMap("base");
-
-				const targetColor = textures.hex_color.replace("#", "");
-				if (mat.color.getHexString() !== targetColor) {
-					mat.color.set(textures.hex_color);
-					mat.needsUpdate = true;
-				}
-
-				return;
-			}
-
-			// BASE
-			if (textures.base) {
-				if (mat.map?.userData?.originalUrl !== textures.base) {
-					promises.push(
-						loadAndApply(
-							textures.base,
-							(tex) => {
-								tex.colorSpace = THREE.SRGBColorSpace;
-								clearMap("base");
-								mat.color.set("#fff");
-								mat.map = tex;
-							},
-							"base",
-						),
-					);
-				}
-			} else {
-				clearMap("base");
-			}
-
-			// NORMAL
-			if (textures.normal) {
-				if (mat.normalMap?.userData?.originalUrl !== textures.normal) {
-					promises.push(
-						loadAndApply(
-							textures.normal,
-							(tex) => {
-								clearMap("normal");
-								mat.normalMap = tex;
-							},
-							"normal",
-						),
-					);
-				}
-			} else {
-				clearMap("normal");
-			}
-
-			// ORM
-			if (textures.orm) {
-				if (typeof textures.orm === "string") {
-					promises.push(
-						loadAndApply(
-							textures.orm,
-							(tex) => {
-								clearMap("ao");
-								clearMap("roughness");
-								clearMap("metalness");
-
-								mat.aoMap = mat.roughnessMap = mat.metalnessMap = tex;
-								mat.roughness = roughnessFactor;
-							},
-							"orm",
-						),
-					);
-				} else {
-					const orm = textures.orm;
-
-					// AO
-					if (orm.ao) {
-						promises.push(
-							loadAndApply(
-								orm.ao,
-								(tex) => {
-									clearMap("ao");
-									mat.aoMap = tex;
-								},
-								"ao",
-							),
-						);
-					} else {
-						clearMap("ao");
-					}
-
-					// Roughness
-					if (orm.roughness) {
-						promises.push(
-							loadAndApply(
-								orm.roughness,
-								(tex) => {
-									clearMap("roughness");
-									mat.roughnessMap = tex;
-									mat.roughness = roughnessFactor;
-								},
-								"roughness",
-							),
-						);
-					} else {
-						clearMap("roughness");
-					}
-
-					// Metalness
-					if (orm.metalness) {
-						promises.push(
-							loadAndApply(
-								orm.metalness,
-								(tex) => {
-									clearMap("metalness");
-									mat.metalnessMap = tex;
-								},
-								"metalness",
-							),
-						);
-					} else {
-						clearMap("metalness");
-					}
-				}
-			} else {
-				clearMap("ao");
-				clearMap("roughness");
-				clearMap("metalness");
-			}
-
-			await Promise.all(promises);
-		},
-		[materials, textureLoader],
-	);
-
-	const applyMaterial = useCallback(
-		async (materialConfig: Material | Material[]) => {
-			if (!materials) return;
-
-			const materialsArray = Array.isArray(materialConfig)
-				? materialConfig
-				: [materialConfig];
-			const totalSteps = materialsArray.reduce(
-				(acc, mat) => acc + mat.areas.length,
-				0,
-			);
-			let currentStep = 0;
-
-			setLoadingStatus((prev) => ({
-				...prev,
-				isLoading: true,
-				steps: totalSteps,
-				currentStep: 0,
-			}));
-
-			if (onMaterialsApplied) onMaterialsApplied(materialsArray);
-
-			for (const mat of materialsArray) {
-				for (const area of mat.areas) {
-					await updateCombinedTexture(area.area, area);
-					currentStep++;
-					setLoadingStatus((prev) => ({ ...prev, currentStep }));
-				}
-			}
-
-			setLoadingStatus((prev) => ({ ...prev, isLoading: false }));
-		},
-		[materials, updateCombinedTexture, onMaterialsApplied],
-	);
-
-	// EXPORT
 	const exportToUSDZ = async (
 		model: ModelData,
 		returnBlob = false,
@@ -452,7 +488,6 @@ export function ModelProvider({
 			usdzExporter.parse(
 				modelClone,
 				(result: Uint8Array) => {
-					// força que seja ArrayBuffer
 					const buffer =
 						result.buffer instanceof ArrayBuffer
 							? result.buffer

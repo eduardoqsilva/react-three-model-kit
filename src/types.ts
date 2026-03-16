@@ -52,3 +52,43 @@ export interface LoadingStatus {
 export type MaterialMap = {
 	[key: string]: THREE.MeshStandardMaterial | undefined;
 };
+
+
+// AR Btn
+
+
+export type ARMode = "webxr" | "sceneviewer" | "quicklook";
+
+export interface ARButtonProps {
+	/**
+	 * Define a ordem de prioridade dos modos AR tentados.
+	 * O primeiro modo disponível no dispositivo é utilizado.
+	 * Padrão: `["webxr", "sceneviewer", "quicklook"]`
+	 */
+	prefer?: ARMode[];
+	/**
+	 * URL pública do arquivo GLB usado pelo Scene Viewer (Android).
+	 * Quando não fornecida, o componente exporta o modelo em tempo real
+	 * e usa uma blob URL — funciona apenas em desenvolvimento local.
+	 */
+	glbUrl?: string;
+	/**
+	 * URL pública do arquivo USDZ usado pelo Quick Look (iOS).
+	 * Quando não fornecida, o componente exporta o modelo em tempo real.
+	 */
+	usdzUrl?: string;
+	/** Título exibido no Scene Viewer (Android). */
+	title?: string;
+	/** Conteúdo do botão. */
+	children?: React.ReactNode;
+	/** Classe CSS aplicada ao botão. */
+	className?: string;
+	/** Estilo inline aplicado ao botão. */
+	style?: React.CSSProperties;
+	/** Escala aplicada ao modelo na cena WebXR. Padrão: `[1, 1, 1]`. */
+	modelScale?: [number, number, number];
+	/** Callback disparado quando um modo AR é aberto. Recebe o modo utilizado. */
+	onOpen?: (mode: ARMode) => void;
+	/** Callback disparado quando a sessão WebXR encerra. */
+	onSessionEnd?: () => void;
+}
