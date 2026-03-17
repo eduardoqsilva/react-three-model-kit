@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.5.1](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.0...v1.5.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* **model:** resolve loading state stuck when using loadModel with initMaterials ([3d2b577](https://github.com/eduardoqsilva/react-three-model-kit/commit/3d2b577eb70654d4460228a23903422622b9c66d))
+
 ## [1.5.0](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.4.1...v1.5.0) (2026-03-17)
 
 
