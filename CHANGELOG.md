@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.5.2](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.1...v1.5.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* steps number ([a3197d4](https://github.com/eduardoqsilva/react-three-model-kit/commit/a3197d4464191ba7d37e29fdb3f715b9c4a6de67))
+
 ### [1.5.1](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.0...v1.5.1) (2026-03-17)
 
 
