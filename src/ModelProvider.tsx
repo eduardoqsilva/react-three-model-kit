@@ -128,10 +128,29 @@ export function ModelProvider({
 	 *
 	 * @param materialsArray - Lista de materiais a aplicar.
 	 * @param stepOffset - Step inicial do loading; quando > 0, o loading não é reiniciado.
+	 * @param materialsMap - Mapa de materiais a usar. Se omitido, usa o estado `materials`.
+	 *                       Deve ser passado explicitamente quando chamado dentro do callback
+	 *                       do loadModel, pois o estado React ainda não foi atualizado nesse ponto.
 	 */
 	const runApplyMaterial = useCallback(
-		async (materialsArray: Material[], stepOffset: number): Promise<void> => {
-			if (!materials) return;
+		async (
+			materialsArray: Material[],
+			stepOffset: number,
+			materialsMap?: MaterialMap,
+		): Promise<void> => {
+			const resolvedMaterials = materialsMap ?? materials;
+
+			if (!resolvedMaterials) {
+				console.warn(
+					"[ModelProvider] runApplyMaterial chamado sem materiais disponíveis. Abortando.",
+				);
+				setLoadingStatus((prev) => ({
+					...prev,
+					isLoading: false,
+					progress: 100,
+				}));
+				return;
+			}
 
 			const textureSteps = countTextureSteps(materialsArray);
 			const totalSteps = stepOffset + textureSteps;
@@ -150,12 +169,14 @@ export function ModelProvider({
 
 			for (const mat of materialsArray) {
 				for (const area of mat.areas) {
-					const threeMat = materials[area.area] as THREE.MeshStandardMaterial;
+					const threeMat = resolvedMaterials[area.area] as THREE.MeshStandardMaterial;
 
 					if (!threeMat) {
 						console.warn(
-							`[ModelProvider] Material '${area.area}' não encontrado na cena atual.`,
+							`[ModelProvider] Material '${area.area}' não encontrado na cena atual. Pulando área.`,
 						);
+						currentStep++;
+						setLoadingStatus((prev) => ({ ...prev, currentStep }));
 						continue;
 					}
 
@@ -222,7 +243,6 @@ export function ModelProvider({
 					const promises: Promise<void>[] = [];
 
 					if (textures.hex_color && !textures.base) {
-						// cor plana: limpa o mapa base e aplica diretamente
 						clearMap("base");
 						const targetColor = textures.hex_color.replace("#", "");
 						if (threeMat.color.getHexString() !== targetColor) {
@@ -268,7 +288,6 @@ export function ModelProvider({
 
 						if (textures.orm) {
 							if (typeof textures.orm === "string") {
-								// ORM combinado em uma única textura
 								promises.push(
 									loadAndApply(
 										textures.orm,
@@ -377,7 +396,6 @@ export function ModelProvider({
 					: [initMaterials]
 				: null;
 
-			// pré-calcula o total para que o progresso já conheça o fim
 			const totalSteps = 1 + (initArray ? countTextureSteps(initArray) : 0);
 
 			setLoadingStatus({
@@ -405,8 +423,7 @@ export function ModelProvider({
 					setLoadingStatus((prev) => ({ ...prev, currentStep: 1 }));
 
 					if (initArray) {
-						// continua o loading a partir do step 1 (GLB já contado)
-						runApplyMaterial(initArray, 1);
+						runApplyMaterial(initArray, 1, extractedMaterials);
 					} else {
 						setLoadingStatus((prev) => ({
 							...prev,
