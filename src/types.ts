@@ -53,9 +53,7 @@ export type MaterialMap = {
 	[key: string]: THREE.MeshStandardMaterial | undefined;
 };
 
-
 // AR Btn
-
 
 export type ARMode = "webxr" | "sceneviewer" | "quicklook";
 
