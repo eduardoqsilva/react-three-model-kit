@@ -101,26 +101,29 @@ export function ModelProvider({
 		};
 	}, []);
 
-	const countTextureSteps = useCallback((materialsArray: Material[]): number => {
-		let count = 0;
-		for (const mat of materialsArray) {
-			for (const area of mat.areas) {
-				const { textures = {} } = area;
-				if (textures.base || textures.hex_color) count++;
-				if (textures.normal) count++;
-				if (textures.orm) {
-					if (typeof textures.orm === "string") {
-						count++;
-					} else {
-						if (textures.orm.ao) count++;
-						if (textures.orm.roughness) count++;
-						if (textures.orm.metalness) count++;
+	const countTextureSteps = useCallback(
+		(materialsArray: Material[]): number => {
+			let count = 0;
+			for (const mat of materialsArray) {
+				for (const area of mat.areas) {
+					const { textures = {} } = area;
+					if (textures.base || textures.hex_color) count++;
+					if (textures.normal) count++;
+					if (textures.orm) {
+						if (typeof textures.orm === "string") {
+							count++;
+						} else {
+							if (textures.orm.ao) count++;
+							if (textures.orm.roughness) count++;
+							if (textures.orm.metalness) count++;
+						}
 					}
 				}
 			}
-		}
-		return count;
-	}, []);
+			return count;
+		},
+		[],
+	);
 
 	/**
 	 * Aplica materiais na cena e gerencia o loading state.
@@ -157,19 +160,22 @@ export function ModelProvider({
 			let currentStep = stepOffset;
 
 			if (stepOffset === 0) {
-				setLoadingStatus((prev) => ({
-					...prev,
+				setLoadingStatus({
 					isLoading: true,
 					steps: totalSteps,
-					currentStep,
-				}));
+					currentStep: 0,
+					progress: 0,
+					currentSrc: "",
+				});
 			}
 
 			if (onMaterialsApplied) onMaterialsApplied(materialsArray);
 
 			for (const mat of materialsArray) {
 				for (const area of mat.areas) {
-					const threeMat = resolvedMaterials[area.area] as THREE.MeshStandardMaterial;
+					const threeMat = resolvedMaterials[
+						area.area
+					] as THREE.MeshStandardMaterial;
 
 					if (!threeMat) {
 						console.warn(
@@ -270,7 +276,9 @@ export function ModelProvider({
 						}
 
 						if (textures.normal) {
-							if (threeMat.normalMap?.userData?.originalUrl !== textures.normal) {
+							if (
+								threeMat.normalMap?.userData?.originalUrl !== textures.normal
+							) {
 								promises.push(
 									loadAndApply(
 										textures.normal,
@@ -295,7 +303,10 @@ export function ModelProvider({
 											clearMap("ao");
 											clearMap("roughness");
 											clearMap("metalness");
-											threeMat.aoMap = threeMat.roughnessMap = threeMat.metalnessMap = tex;
+											threeMat.aoMap =
+												threeMat.roughnessMap =
+												threeMat.metalnessMap =
+													tex;
 											threeMat.roughness = roughnessFactor;
 										},
 										"orm",
@@ -375,7 +386,9 @@ export function ModelProvider({
 
 	const applyMaterial = useCallback(
 		(materialConfig: Material | Material[]): Promise<void> => {
-			const arr = Array.isArray(materialConfig) ? materialConfig : [materialConfig];
+			const arr = Array.isArray(materialConfig)
+				? materialConfig
+				: [materialConfig];
 			return runApplyMaterial(arr, 0);
 		},
 		[runApplyMaterial],
