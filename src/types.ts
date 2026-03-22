@@ -57,36 +57,26 @@ export type MaterialMap = {
 
 export type ARMode = "webxr" | "sceneviewer" | "quicklook";
 
+type UrlProp = string | (() => Promise<string>);
+
 export interface ARButtonProps {
-	/**
-	 * Define a ordem de prioridade dos modos AR tentados.
-	 * O primeiro modo disponível no dispositivo é utilizado.
-	 * Padrão: `["webxr", "sceneviewer", "quicklook"]`
-	 */
 	prefer?: ARMode[];
-	/**
-	 * URL pública do arquivo GLB usado pelo Scene Viewer (Android).
-	 * Quando não fornecida, o componente exporta o modelo em tempo real
-	 * e usa uma blob URL — funciona apenas em desenvolvimento local.
-	 */
-	glbUrl?: string;
-	/**
-	 * URL pública do arquivo USDZ usado pelo Quick Look (iOS).
-	 * Quando não fornecida, o componente exporta o modelo em tempo real.
-	 */
-	usdzUrl?: string;
-	/** Título exibido no Scene Viewer (Android). */
+	/** URL pré-hospedada do GLB, ou função async que faz upload e retorna a URL */
+	glbUrl?: UrlProp;
+	/** URL pré-hospedada do USDZ, ou função async que faz upload e retorna a URL */
+	usdzUrl?: UrlProp;
 	title?: string;
-	/** Conteúdo do botão. */
-	children?: React.ReactNode;
-	/** Classe CSS aplicada ao botão. */
+	/**
+	 * Aceita ReactNode estático ou render prop com `{ isLoading }`.
+	 * @example
+	 * <ARButton glbUrl={uploadAndGetUrl}>
+	 *   {({ isLoading }) => isLoading ? <Spinner /> : "Ver em AR"}
+	 * </ARButton>
+	 */
+	children?: React.ReactNode | ((state: { isLoading: boolean }) => React.ReactNode);
 	className?: string;
-	/** Estilo inline aplicado ao botão. */
 	style?: React.CSSProperties;
-	/** Escala aplicada ao modelo na cena WebXR. Padrão: `[1, 1, 1]`. */
 	modelScale?: [number, number, number];
-	/** Callback disparado quando um modo AR é aberto. Recebe o modo utilizado. */
 	onOpen?: (mode: ARMode) => void;
-	/** Callback disparado quando a sessão WebXR encerra. */
 	onSessionEnd?: () => void;
 }

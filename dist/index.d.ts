@@ -42,64 +42,31 @@ type MaterialMap = {
     [key: string]: THREE.MeshStandardMaterial | undefined;
 };
 type ARMode = "webxr" | "sceneviewer" | "quicklook";
+type UrlProp = string | (() => Promise<string>);
 interface ARButtonProps {
-    /**
-     * Define a ordem de prioridade dos modos AR tentados.
-     * O primeiro modo disponível no dispositivo é utilizado.
-     * Padrão: `["webxr", "sceneviewer", "quicklook"]`
-     */
     prefer?: ARMode[];
-    /**
-     * URL pública do arquivo GLB usado pelo Scene Viewer (Android).
-     * Quando não fornecida, o componente exporta o modelo em tempo real
-     * e usa uma blob URL — funciona apenas em desenvolvimento local.
-     */
-    glbUrl?: string;
-    /**
-     * URL pública do arquivo USDZ usado pelo Quick Look (iOS).
-     * Quando não fornecida, o componente exporta o modelo em tempo real.
-     */
-    usdzUrl?: string;
-    /** Título exibido no Scene Viewer (Android). */
+    /** URL pré-hospedada do GLB, ou função async que faz upload e retorna a URL */
+    glbUrl?: UrlProp;
+    /** URL pré-hospedada do USDZ, ou função async que faz upload e retorna a URL */
+    usdzUrl?: UrlProp;
     title?: string;
-    /** Conteúdo do botão. */
-    children?: React.ReactNode;
-    /** Classe CSS aplicada ao botão. */
+    /**
+     * Aceita ReactNode estático ou render prop com `{ isLoading }`.
+     * @example
+     * <ARButton glbUrl={uploadAndGetUrl}>
+     *   {({ isLoading }) => isLoading ? <Spinner /> : "Ver em AR"}
+     * </ARButton>
+     */
+    children?: React.ReactNode | ((state: {
+        isLoading: boolean;
+    }) => React.ReactNode);
     className?: string;
-    /** Estilo inline aplicado ao botão. */
     style?: React.CSSProperties;
-    /** Escala aplicada ao modelo na cena WebXR. Padrão: `[1, 1, 1]`. */
     modelScale?: [number, number, number];
-    /** Callback disparado quando um modo AR é aberto. Recebe o modo utilizado. */
     onOpen?: (mode: ARMode) => void;
-    /** Callback disparado quando a sessão WebXR encerra. */
     onSessionEnd?: () => void;
 }
 
-/**
- * Botão que abre o modelo 3D no melhor visualizador AR disponível,
- * respeitando a ordem de prioridade definida em `prefer`.
- *
- * **URLs pré-hospedadas (produção):**
- * Forneça `glbUrl` e/ou `usdzUrl` para evitar a exportação em tempo real
- * e garantir compatibilidade com Scene Viewer no Android.
- *
- * **Sem URLs (desenvolvimento):**
- * O modelo é exportado em tempo real a partir do estado atual do `ModelProvider`.
- * Scene Viewer não funcionará por rejeitar blob URLs — use WebXR como fallback.
- *
- * @example
- * // Produção: URLs pré-hospedadas
- * <ARButton
- *   glbUrl="https://cdn.exemplo.com/produto.glb"
- *   usdzUrl="https://cdn.exemplo.com/produto.usdz"
- *   prefer={["sceneviewer", "quicklook", "webxr"]}
- * />
- *
- * @example
- * // Desenvolvimento: exporta em tempo real
- * <ARButton prefer={["webxr"]} />
- */
 declare function ARButton({ prefer, glbUrl, usdzUrl, title, children, className, style, modelScale, onOpen, onSessionEnd, }: ARButtonProps): react_jsx_runtime.JSX.Element;
 
 type ExportModelFunction = (format: "glb" | "usdz", createUrl?: boolean) => Promise<string | Blob | undefined>;

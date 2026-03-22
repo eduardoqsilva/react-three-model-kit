@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/style/noNonNullAssertion: <> */
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import * as THREE from "three";
 import { useModelContext } from "./ModelProvider";
 import type { ARButtonProps, ARMode } from "./types";
@@ -18,13 +18,20 @@ const supportsWebXRAR = (): Promise<boolean> =>
 	navigator.xr?.isSessionSupported("immersive-ar") ?? Promise.resolve(false);
 
 // ─────────────────────────────────────────────
+// URL resolution helper
+// ─────────────────────────────────────────────
+
+type UrlProp = string | (() => Promise<string>);
+
+async function resolveUrlProp(prop: UrlProp): Promise<string> {
+	return typeof prop === "function" ? prop() : prop;
+}
+
+// ─────────────────────────────────────────────
 // Mode launchers
 // ─────────────────────────────────────────────
 
 function launchQuickLook(url: string, owned: boolean) {
-	// O Safari exige uma âncora com rel="ar" e um filho <img> no DOM
-	// para ativar o Quick Look. Criamos e removemos programaticamente
-	// para não deixar elementos inacessíveis permanentes no markup.
 	const anchor = document.createElement("a");
 	anchor.setAttribute("rel", "ar");
 	anchor.href = url;
@@ -224,33 +231,24 @@ async function launchWebXR(
 }
 
 // ─────────────────────────────────────────────
+// Render children helper
+// ─────────────────────────────────────────────
+
+type ChildrenProp =
+	| React.ReactNode
+	| ((state: { isLoading: boolean }) => React.ReactNode);
+
+function renderChildren(
+	children: ChildrenProp,
+	isLoading: boolean,
+): React.ReactNode {
+	return typeof children === "function" ? children({ isLoading }) : children;
+}
+
+// ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
 
-/**
- * Botão que abre o modelo 3D no melhor visualizador AR disponível,
- * respeitando a ordem de prioridade definida em `prefer`.
- *
- * **URLs pré-hospedadas (produção):**
- * Forneça `glbUrl` e/ou `usdzUrl` para evitar a exportação em tempo real
- * e garantir compatibilidade com Scene Viewer no Android.
- *
- * **Sem URLs (desenvolvimento):**
- * O modelo é exportado em tempo real a partir do estado atual do `ModelProvider`.
- * Scene Viewer não funcionará por rejeitar blob URLs — use WebXR como fallback.
- *
- * @example
- * // Produção: URLs pré-hospedadas
- * <ARButton
- *   glbUrl="https://cdn.exemplo.com/produto.glb"
- *   usdzUrl="https://cdn.exemplo.com/produto.usdz"
- *   prefer={["sceneviewer", "quicklook", "webxr"]}
- * />
- *
- * @example
- * // Desenvolvimento: exporta em tempo real
- * <ARButton prefer={["webxr"]} />
- */
 export function ARButton({
 	prefer = ["webxr", "sceneviewer", "quicklook"],
 	glbUrl,
@@ -264,44 +262,63 @@ export function ARButton({
 	onSessionEnd,
 }: ARButtonProps) {
 	const { model, exportModel } = useModelContext();
+	const [isLoading, setIsLoading] = useState(false);
 
 	const handleClick = useCallback(async () => {
-		if (!model) return;
+		if (!model || isLoading) return;
 
-		// Resolve a URL do GLB: usa a fornecida ou exporta e cria blob URL
+		// Resolve GLB: prop string | async fn | exporta em tempo real
 		const resolveGlb = async (): Promise<{ url: string; owned: boolean }> => {
-			if (glbUrl) return { url: glbUrl, owned: false };
+			if (glbUrl) {
+				const url = await resolveUrlProp(glbUrl);
+				return { url, owned: false };
+			}
 			const blob = (await exportModel("glb")) as Blob;
 			return { url: URL.createObjectURL(blob), owned: true };
 		};
 
-		// Resolve a URL do USDZ: usa a fornecida ou exporta e cria blob URL
+		// Resolve USDZ: prop string | async fn | exporta em tempo real
 		const resolveUsdz = async (): Promise<{ url: string; owned: boolean }> => {
-			if (usdzUrl) return { url: usdzUrl, owned: false };
+			if (usdzUrl) {
+				const url = await resolveUrlProp(usdzUrl);
+				return { url, owned: false };
+			}
 			const blob = (await exportModel("usdz")) as Blob;
 			return { url: URL.createObjectURL(blob), owned: true };
 		};
 
-		// Itera a lista de preferências e tenta o primeiro modo disponível
 		const tryModes = async (modes: ARMode[]) => {
 			for (const mode of modes) {
 				if (mode === "quicklook" && isIOS()) {
-					const { url, owned } = await resolveUsdz();
-					onOpen?.("quicklook");
-					launchQuickLook(url, owned);
+					setIsLoading(true);
+					try {
+						const { url, owned } = await resolveUsdz();
+						onOpen?.("quicklook");
+						launchQuickLook(url, owned);
+					} finally {
+						setIsLoading(false);
+					}
 					return;
 				}
 
 				if (mode === "sceneviewer" && isAndroid()) {
-					const { url, owned } = await resolveGlb();
-					onOpen?.("sceneviewer");
-					const remaining = modes.slice(modes.indexOf("sceneviewer") + 1);
-					await launchSceneViewer(url, owned, title, () => tryModes(remaining));
+					setIsLoading(true);
+					try {
+						const { url, owned } = await resolveGlb();
+						onOpen?.("sceneviewer");
+						const remaining = modes.slice(modes.indexOf("sceneviewer") + 1);
+						await launchSceneViewer(url, owned, title, () =>
+							tryModes(remaining),
+						);
+					} finally {
+						setIsLoading(false);
+					}
 					return;
 				}
 
 				if (mode === "webxr" && (await supportsWebXRAR())) {
 					onOpen?.("webxr");
+					// WebXR não precisa de loading: não há upload, a sessão abre direto
 					await launchWebXR(model.scene, modelScale, onSessionEnd);
 					return;
 				}
@@ -313,6 +330,7 @@ export function ARButton({
 		await tryModes(prefer);
 	}, [
 		model,
+		isLoading,
 		exportModel,
 		prefer,
 		glbUrl,
@@ -329,9 +347,9 @@ export function ARButton({
 			className={className}
 			style={style}
 			onClick={handleClick}
-			disabled={!model}
+			disabled={!model || isLoading}
 		>
-			{children}
+			{renderChildren(children, isLoading)}
 		</button>
 	);
 }
