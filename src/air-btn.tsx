@@ -127,6 +127,12 @@ async function launchWebXR(
 	}
 	let prev: TouchPoint[] = [];
 
+	// Detecta tap simples (sem movimento) para reposicionar
+	let touchStartTime = 0;
+	let touchStartPos = { x: 0, y: 0 };
+	const TAP_MAX_DURATION_MS = 200;
+	const TAP_MAX_MOVEMENT_PX = 10;
+
 	const dist = (a: TouchPoint, b: TouchPoint) =>
 		Math.hypot(b.x - a.x, b.y - a.y);
 	const angle = (a: TouchPoint, b: TouchPoint) =>
@@ -142,17 +148,40 @@ async function launchWebXR(
 		);
 
 	const onTouchStart = (e: TouchEvent) => {
-		if (!placed) return;
 		prev = Array.from(e.touches).map((t) => ({
 			id: t.identifier,
 			x: t.clientX,
 			y: t.clientY,
 		}));
+
+		// Guarda posição e tempo para detectar tap simples
+		if (e.touches.length === 1) {
+			touchStartTime = performance.now();
+			touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+		}
+	};
+
+	const onTouchEnd = (e: TouchEvent) => {
+		// Tap simples com 1 dedo → reseta placement para reposicionar
+		if (
+			placed &&
+			e.changedTouches.length === 1 &&
+			e.touches.length === 0 &&
+			performance.now() - touchStartTime < TAP_MAX_DURATION_MS &&
+			Math.hypot(
+				e.changedTouches[0].clientX - touchStartPos.x,
+				e.changedTouches[0].clientY - touchStartPos.y,
+			) < TAP_MAX_MOVEMENT_PX
+		) {
+			placed = false;
+			modelRoot.visible = false;
+		}
 	};
 
 	const onTouchMove = (e: TouchEvent) => {
 		if (!placed) return;
 		e.preventDefault();
+
 		const curr: TouchPoint[] = Array.from(e.touches).map((t) => ({
 			id: t.identifier,
 			x: t.clientX,
@@ -160,26 +189,33 @@ async function launchWebXR(
 		}));
 
 		if (curr.length === 1 && prev.length === 1) {
+			// Drag: move no plano horizontal na altura do modelo
 			const camera = renderer.xr.getCamera();
 			dragPlane.constant = -modelPos.y;
+
 			raycaster.setFromCamera(ndcOf(curr[0].x, curr[0].y), camera);
 			const c = raycaster.ray.intersectPlane(dragPlane, intersection.clone());
+
 			raycaster.setFromCamera(ndcOf(prev[0].x, prev[0].y), camera);
 			const p = raycaster.ray.intersectPlane(dragPlane, intersection.clone());
+
 			if (c && p) {
 				modelPos.x += c.x - p.x;
 				modelPos.z += c.z - p.z;
 			}
 		} else if (curr.length === 2 && prev.length === 2) {
+			// Pinch: escala
 			const pd = dist(prev[0], prev[1]);
 			const cd = dist(curr[0], curr[1]);
 			if (pd > 0)
 				scaleFactor = Math.max(0.1, Math.min(10, scaleFactor * (cd / pd)));
+
+			// Twist: rotação Y
 			modelRotY += angle(curr[0], curr[1]) - angle(prev[0], prev[1]);
 		}
 
 		modelRoot.position.copy(modelPos);
-		modelRoot.rotation.y = modelRotY;
+		modelRoot.rotation.set(0, modelRotY, 0);
 		modelRoot.scale.set(
 			modelScale[0] * scaleFactor,
 			modelScale[1] * scaleFactor,
@@ -191,6 +227,9 @@ async function launchWebXR(
 	renderer.domElement.addEventListener("touchstart", onTouchStart, {
 		passive: true,
 	});
+	renderer.domElement.addEventListener("touchend", onTouchEnd, {
+		passive: true,
+	});
 	renderer.domElement.addEventListener("touchmove", onTouchMove, {
 		passive: false,
 	});
@@ -199,6 +238,7 @@ async function launchWebXR(
 		renderer.setAnimationLoop(null);
 		hitTestSource?.cancel();
 		renderer.domElement.removeEventListener("touchstart", onTouchStart);
+		renderer.domElement.removeEventListener("touchend", onTouchEnd);
 		renderer.domElement.removeEventListener("touchmove", onTouchMove);
 		renderer.dispose();
 		document.body.removeChild(renderer.domElement);
@@ -216,9 +256,13 @@ async function launchWebXR(
 				const pose = results[0].getPose(refSpace);
 				if (pose) {
 					const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
+
+					// Extrai só a posição e o Y da pose — ignora inclinação X/Z
 					modelPos.setFromMatrixPosition(m);
+					modelRotY = new THREE.Euler().setFromRotationMatrix(m).y;
+
 					modelRoot.position.copy(modelPos);
-					modelRoot.rotation.setFromRotationMatrix(m);
+					modelRoot.rotation.set(0, modelRotY, 0);
 					modelRoot.scale.set(...modelScale);
 					modelRoot.visible = true;
 					placed = true;
@@ -289,7 +333,17 @@ export function ARButton({
 
 		const tryModes = async (modes: ARMode[]) => {
 			for (const mode of modes) {
-				if (mode === "quicklook" && isIOS()) {
+				// ── WebXR: usa cena do contexto diretamente, sem URL ──
+				if (mode === "webxr") {
+					if (!(await supportsWebXRAR())) continue;
+					onOpen?.("webxr");
+					await launchWebXR(model.scene, modelScale, onSessionEnd);
+					return;
+				}
+
+				// ── QuickLook: só iOS, precisa de USDZ ──
+				if (mode === "quicklook") {
+					if (!isIOS()) continue;
 					setIsLoading(true);
 					try {
 						const { url, owned } = await resolveUsdz();
@@ -301,7 +355,9 @@ export function ARButton({
 					return;
 				}
 
-				if (mode === "sceneviewer" && isAndroid()) {
+				// ── Scene Viewer: só Android, precisa de GLB ──
+				if (mode === "sceneviewer") {
+					if (!isAndroid()) continue;
 					setIsLoading(true);
 					try {
 						const { url, owned } = await resolveGlb();
@@ -313,13 +369,6 @@ export function ARButton({
 					} finally {
 						setIsLoading(false);
 					}
-					return;
-				}
-
-				if (mode === "webxr" && (await supportsWebXRAR())) {
-					onOpen?.("webxr");
-					// WebXR não precisa de loading: não há upload, a sessão abre direto
-					await launchWebXR(model.scene, modelScale, onSessionEnd);
 					return;
 				}
 			}
