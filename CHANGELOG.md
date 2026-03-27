@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.5.6](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.5...v1.5.6) (2026-03-27)
+
+
+### Bug Fixes
+
+* array order and webxr scene control ([fba49e8](https://github.com/eduardoqsilva/react-three-model-kit/commit/fba49e8a9fda5f41dbd3062ad1ed1df44060b550))
+
 ### [1.5.5](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.4...v1.5.5) (2026-03-22)
 
 ### [1.5.4](https://github.com/eduardoqsilva/react-three-model-kit/compare/v1.5.3...v1.5.4) (2026-03-17)
